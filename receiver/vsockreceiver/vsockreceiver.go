@@ -3,6 +3,7 @@ package vsockreceiver
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync"
 
 	"google.golang.org/grpc"
@@ -10,11 +11,16 @@ import (
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
+
+	"github.com/linuxkit/virtsock/pkg/hvsock"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/vsockreceiver/internal/trace"
 )
 
 type vsockReceiver struct {
 	cfg        *Config
 	serverGRPC *grpc.Server
+
+	host component.Host
 
 	traceReceiver *trace.Receiver
 	shutdownWG    sync.WaitGroup
@@ -34,10 +40,24 @@ func newVsockReceiver(cfg *Config, settings component.ReceiverCreateSettings) *v
 	return r
 }
 
-func (r *vsockReceiver) startGRPCServer(cfg *configgrpc.GRPCServerSettings, host component.Host) error {
-	r.settings.Logger.Info("Starting GRPC server on endpoint " + cfg.NetAddr.Endpoint)
+func (r *vsockReceiver) startGRPCServer() error {
+	r.settings.Logger.Info("Starting GRPC server on endpoint " + r.cfg.Addr)
+	split := strings.Split(r.cfg.Addr, ":")
 
-	gln, err := cfg.ToListener()
+	VMID, err := hvsock.GUIDFromString(split[0])
+	if err != nil {
+		return err
+	}
+	ServiceID, err := hvsock.GUIDFromString(split[1])
+	if err != nil {
+		return err
+	}
+	addrz := hvsock.Addr{
+		VMID:      VMID,
+		ServiceID: ServiceID,
+	}
+
+	gln, err := hvsock.Listen(addrz)
 	if err != nil {
 		return err
 	}
@@ -46,26 +66,20 @@ func (r *vsockReceiver) startGRPCServer(cfg *configgrpc.GRPCServerSettings, host
 		defer r.shutdownWG.Done()
 
 		if errGrpc := r.serverGRPC.Serve(gln); errGrpc != nil && !errors.Is(errGrpc, grpc.ErrServerStopped) {
-			host.ReportFatalError(errGrpc)
+			r.host.ReportFatalError(errGrpc)
 		}
 	}()
 	return nil
 }
 
 func (r *vsockReceiver) startProtocolServers(host component.Host) error {
-	var err error
-	var opts []grpc.ServerOption
-	opts, err = r.cfg.GRPC.ToServerOption(host, r.settings.TelemetrySettings)
-	if err != nil {
-		return err
-	}
-	r.serverGRPC = grpc.NewServer(opts...)
+	r.serverGRPC = grpc.NewServer()
 
 	if r.traceReceiver != nil {
 		ptraceotlp.RegisterServer(r.serverGRPC, r.traceReceiver)
 	}
 
-	err = r.startGRPCServer(r.cfg.GRPC, host)
+	err := r.startGRPCServer()
 	if err != nil {
 		return err
 	}
