@@ -12,8 +12,8 @@ import (
 	"go.opentelemetry.io/collector/consumer"
 	"go.opentelemetry.io/collector/pdata/ptrace/ptraceotlp"
 
+	"github.com/larrywxyz/opentelemetry-collector-contrib/receiver/vsockreceiver/internal/trace"
 	"github.com/linuxkit/virtsock/pkg/hvsock"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/receiver/vsockreceiver/internal/trace"
 )
 
 type vsockReceiver struct {

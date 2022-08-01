@@ -1,4 +1,4 @@
-module github.com/open-telemetry/opentelemetry-collector-contrib/receiver/vsockreceiver
+module github.com/larrywxyz/opentelemetry-collector-contrib/receiver/vsockreceiver
 
 go 1.18
 
